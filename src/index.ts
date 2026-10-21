@@ -362,24 +362,39 @@ app.put('/users/:id/info', async (req, res) => {
   }
 });
 
+const GUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 /**
  * @swagger
  * /outbound/pre-call/validate:
  *   post:
  *     summary: Validate an outbound call before dialing
  *     description: Pre-call check for an outbound campaign call record
+ *     parameters:
+ *       - in: header
+ *         name: VendorContactId
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Vendor contact identifier
  *     requestBody:
  *       required: true
  *       content:
  *         application/json:
  *           schema:
  *             type: object
+ *             required:
+ *               - campaignName
+ *               - callRecordId
+ *               - accountNumber
+ *               - phone
  *             properties:
  *               campaignName:
  *                 type: string
  *                 example: COLL_DPD00to30_Med
  *               callRecordId:
  *                 type: string
+ *                 format: uuid
  *                 example: ffdb7f0e-6455-4672-89fb-ca775264fb0e
  *               accountNumber:
  *                 type: string
@@ -409,8 +424,51 @@ app.put('/users/:id/info', async (req, res) => {
  *                   type: string
  *                   nullable: true
  *                   example: null
+ *       400:
+ *         description: Validation error
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                   example: reject
+ *                 reason:
+ *                   type: string
+ *                   example: CallRecordId is required
  */
 app.post('/outbound/pre-call/validate', (req, res) => {
+  const vendorContactId = req.get('VendorContactId') ?? req.get('X-Vendor-Contact-Id');
+  const { callRecordId, campaignName, phone, accountNumber } = req.body ?? {};
+  const errors: string[] = [];
+
+  if (!callRecordId || typeof callRecordId !== 'string' || !callRecordId.trim()) {
+    errors.push('CallRecordId is required');
+  } else if (!GUID_REGEX.test(callRecordId.trim())) {
+    errors.push('CallRecordId must be a valid GUID');
+  }
+
+  if (!campaignName || typeof campaignName !== 'string' || !campaignName.trim()) {
+    errors.push('CampaignName is required');
+  }
+
+  if (!vendorContactId || !vendorContactId.trim()) {
+    errors.push('VendorContactId is required');
+  }
+
+  if (!phone || typeof phone !== 'string' || !phone.trim()) {
+    errors.push('Phone is required');
+  }
+
+  if (!accountNumber || typeof accountNumber !== 'string' || !accountNumber.trim()) {
+    errors.push('AccountNumber is required');
+  }
+
+  if (errors.length > 0) {
+    return res.status(400).json({ message: 'reject', reason: errors.join(', ') });
+  }
+
   res.json({ message: 'continue', reason: null });
 });
 
