@@ -430,7 +430,7 @@ const validateJwtToken = (authHeader?: string): string | null => {
 
 /**
  * @swagger
- * /outbound/pre-call/validate:
+ * /api/outbound/pre-call/validate:
  *   post:
  *     summary: Validate an outbound call before dialing
  *     description: Pre-call check for an outbound campaign call record
@@ -517,7 +517,7 @@ const validateJwtToken = (authHeader?: string): string | null => {
  *                   type: string
  *                   example: Authorization token is required
  */
-app.post('/outbound/pre-call/validate', (req, res) => {
+app.post('/api/outbound/pre-call/validate', (req, res) => {
   const jwtError = validateJwtToken(req.get('Authorization'));
   if (jwtError) {
     return res.status(401).json({ message: 'reject', reason: jwtError });
