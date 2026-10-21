@@ -1,4 +1,5 @@
 import express from 'express';
+import crypto from 'crypto';
 import dotenv from 'dotenv';
 import swaggerUi from 'swagger-ui-express';
 import { db } from './db';
@@ -363,6 +364,69 @@ app.put('/users/:id/info', async (req, res) => {
 });
 
 const GUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const BASE64URL_REGEX = /^[A-Za-z0-9_-]+$/;
+
+const validateJwtToken = (authHeader?: string): string | null => {
+  if (!authHeader || !authHeader.trim()) {
+    return 'Authorization token is required';
+  }
+
+  const match = authHeader.trim().match(/^Bearer\s+(.+)$/i);
+  if (!match || !match[1].trim()) {
+    return 'Invalid Authorization header format. Expected: Bearer <token>';
+  }
+
+  const token = match[1].trim();
+  const parts = token.split('.');
+  if (parts.length !== 3 || parts.some((part) => !part || !BASE64URL_REGEX.test(part))) {
+    return 'Invalid JWT token';
+  }
+
+  const [headerPart, payloadPart, signaturePart] = parts;
+  let header: { alg?: string; typ?: string };
+  let payload: { exp?: number; nbf?: number };
+
+  try {
+    header = JSON.parse(Buffer.from(headerPart, 'base64url').toString('utf8'));
+    payload = JSON.parse(Buffer.from(payloadPart, 'base64url').toString('utf8'));
+  } catch {
+    return 'Invalid JWT token';
+  }
+
+  if (!header || typeof header !== 'object' || !payload || typeof payload !== 'object') {
+    return 'Invalid JWT token';
+  }
+
+  if (process.env.JWT_SECRET) {
+    const algMap: Record<string, string> = {
+      HS256: 'sha256',
+      HS384: 'sha384',
+      HS512: 'sha512',
+    };
+    const digest = header.alg ? algMap[header.alg] : undefined;
+    if (!digest) {
+      return 'Invalid JWT token algorithm';
+    }
+    const expectedSig = crypto
+      .createHmac(digest, process.env.JWT_SECRET)
+      .update(`${headerPart}.${payloadPart}`)
+      .digest();
+    const actualSig = Buffer.from(signaturePart, 'base64url');
+    if (expectedSig.length !== actualSig.length || !crypto.timingSafeEqual(expectedSig, actualSig)) {
+      return 'Invalid JWT token signature';
+    }
+  }
+
+  const nowSeconds = Math.floor(Date.now() / 1000);
+  if (typeof payload.exp === 'number' && payload.exp <= nowSeconds) {
+    return 'JWT token has expired';
+  }
+  if (typeof payload.nbf === 'number' && payload.nbf > nowSeconds) {
+    return 'JWT token is not active yet';
+  }
+
+  return null;
+};
 
 /**
  * @swagger
@@ -370,6 +434,8 @@ const GUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12
  *   post:
  *     summary: Validate an outbound call before dialing
  *     description: Pre-call check for an outbound campaign call record
+ *     security:
+ *       - bearerAuth: []
  *     parameters:
  *       - in: header
  *         name: VendorContactId
@@ -437,8 +503,26 @@ const GUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12
  *                 reason:
  *                   type: string
  *                   example: CallRecordId is required
+ *       401:
+ *         description: Unauthorized (missing or invalid JWT token)
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                   example: reject
+ *                 reason:
+ *                   type: string
+ *                   example: Authorization token is required
  */
 app.post('/outbound/pre-call/validate', (req, res) => {
+  const jwtError = validateJwtToken(req.get('Authorization'));
+  if (jwtError) {
+    return res.status(401).json({ message: 'reject', reason: jwtError });
+  }
+
   const vendorContactId = req.get('VendorContactId') ?? req.get('X-Vendor-Contact-Id');
   const { callRecordId, campaignName, phone, accountNumber } = req.body ?? {};
   const errors: string[] = [];
