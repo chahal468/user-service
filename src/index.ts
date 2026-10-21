@@ -362,6 +362,58 @@ app.put('/users/:id/info', async (req, res) => {
   }
 });
 
+/**
+ * @swagger
+ * /outbound/pre-call/validate:
+ *   post:
+ *     summary: Validate an outbound call before dialing
+ *     description: Pre-call check for an outbound campaign call record
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               campaignName:
+ *                 type: string
+ *                 example: COLL_DPD00to30_Med
+ *               callRecordId:
+ *                 type: string
+ *                 example: ffdb7f0e-6455-4672-89fb-ca775264fb0e
+ *               accountNumber:
+ *                 type: string
+ *                 example: "0014117018"
+ *               phone:
+ *                 type: string
+ *                 example: 610-462-8023
+ *               businessFields:
+ *                 type: object
+ *                 properties:
+ *                   LastPaymentDate:
+ *                     type: string
+ *                     format: date-time
+ *                     example: "2020-10-26T00:00:00"
+ *     responses:
+ *       200:
+ *         description: Validation result
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                   example: continue
+ *                 reason:
+ *                   type: string
+ *                   nullable: true
+ *                   example: null
+ */
+app.post('/outbound/pre-call/validate', (req, res) => {
+  res.json({ message: 'continue', reason: null });
+});
+
 app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec));
 
 const startServer = async () => {
