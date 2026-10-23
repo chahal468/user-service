@@ -556,6 +556,157 @@ app.post('/api/outbound/pre-call/validate', (req, res) => {
   res.json({ message: 'continue', reason: null });
 });
 
+/**
+ * @swagger
+ * /api/outbound/post-call/callresult:
+ *   post:
+ *     summary: Submit outbound post-call result
+ *     description: Records the disposition and call timestamp for an outbound call record
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: header
+ *         name: VendorContactId
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Vendor contact identifier
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - callRecordId
+ *               - callDateTime
+ *               - dispositionCode
+ *             properties:
+ *               callRecordId:
+ *                 type: string
+ *                 format: uuid
+ *                 example: ffdb7f0e-6455-4672-89fb-ca775264fb0e
+ *               callDateTime:
+ *                 type: string
+ *                 format: date-time
+ *                 example: "2026-10-21T21:00:00Z"
+ *               dispositionCode:
+ *                 type: string
+ *                 example: "13400"
+ *     responses:
+ *       200:
+ *         description: Call result updated successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 statusCode:
+ *                   type: integer
+ *                   example: 200
+ *                 status:
+ *                   type: string
+ *                   example: OK
+ *                 callRecordId:
+ *                   type: string
+ *                   format: uuid
+ *                   example: ffdb7f0e-6455-4672-89fb-ca775264fb0e
+ *                 existingCallRecordId:
+ *                   type: string
+ *                   nullable: true
+ *                   example: null
+ *                 correlationId:
+ *                   type: string
+ *                   example: test-corr-003
+ *                 message:
+ *                   type: string
+ *                   example: Call result updated successfully
+ *                 details:
+ *                   type: string
+ *                   nullable: true
+ *                   example: null
+ *                 timestampUtc:
+ *                   type: string
+ *                   format: date-time
+ *                   example: "2026-07-29T20:06:51.8676725+00:00"
+ *                 error:
+ *                   type: string
+ *                   nullable: true
+ *                   example: null
+ *       400:
+ *         description: Validation error
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                   example: reject
+ *                 reason:
+ *                   type: string
+ *                   example: CallRecordId is required
+ *       401:
+ *         description: Unauthorized (missing or invalid JWT token)
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                   example: reject
+ *                 reason:
+ *                   type: string
+ *                   example: Authorization token is required
+ */
+app.post('/api/outbound/post-call/callresult', (req, res) => {
+  const jwtError = validateJwtToken(req.get('Authorization'));
+  if (jwtError) {
+    return res.status(401).json({ message: 'reject', reason: jwtError });
+  }
+
+  const vendorContactId = req.get('VendorContactId') ?? req.get('X-Vendor-Contact-Id');
+  const { callRecordId, callDateTime, dispositionCode } = req.body ?? {};
+  const errors: string[] = [];
+
+  if (!callRecordId || typeof callRecordId !== 'string' || !callRecordId.trim()) {
+    errors.push('CallRecordId is required');
+  } else if (!GUID_REGEX.test(callRecordId.trim())) {
+    errors.push('CallRecordId must be a valid GUID');
+  }
+
+  if (!vendorContactId || !vendorContactId.trim()) {
+    errors.push('VendorContactId is required');
+  }
+
+  if (!callDateTime || typeof callDateTime !== 'string' || !callDateTime.trim()) {
+    errors.push('CallDateTime is required');
+  } else if (Number.isNaN(Date.parse(callDateTime.trim()))) {
+    errors.push('CallDateTime must be a valid ISO date-time');
+  }
+
+  if (!dispositionCode || typeof dispositionCode !== 'string' || !dispositionCode.trim()) {
+    errors.push('DispositionCode is required');
+  }
+
+  if (errors.length > 0) {
+    return res.status(400).json({ message: 'reject', reason: errors.join(', ') });
+  }
+
+  res.json({
+    statusCode: 200,
+    status: 'OK',
+    callRecordId: callRecordId.trim(),
+    existingCallRecordId: null,
+    correlationId: crypto.randomUUID(),
+    message: 'Call result updated successfully',
+    details: null,
+    timestampUtc: new Date().toISOString().replace('Z', '+00:00'),
+    error: null,
+  });
+});
+
 app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec));
 
 const startServer = async () => {
